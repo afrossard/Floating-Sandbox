@@ -303,39 +303,24 @@ make install    # Copies to build/Install/ with Titanic as default_ship.shp2
 ./build/Install/FloatingSandbox   # Launches with Titanic
 ```
 
-### Phase 8: Document Build Steps and Automate ⬅️ after Phase 7
+### Phase 8: Document Build Steps and Automate ✅
 
-Create a reproducible, automated build process for a fresh macOS Apple Silicon machine.
+#### 8a. BUILD-macOS.md ✅
 
-#### 8a. Document the manual build steps
+Created `BUILD-macOS.md` following the style of the existing `BUILD-Ubuntu.md` and `BUILD-Windows.md`. Covers prerequisites, Homebrew dependency installation, cloning picojson/Google Test, configuring UserSettings.cmake, building, installing, running, unit tests, known issues, and uninstalling.
 
-Write a complete `BUILD-macOS.md` guide covering:
-1. Prerequisites (Xcode Command Line Tools, Homebrew)
-2. Dependency installation (`brew install cmake pkg-config wxwidgets@3.2 sfml@2`)
-3. Cloning picojson and Google Test
-4. Creating `UserSettings.cmake` from the example
-5. Configure, build, install
-6. Running the app
-7. Running unit tests
-8. Uninstall / cleanup
+#### 8b. Scripts/build-macos.sh ✅
 
-#### 8b. Create a build automation script
-
-Write a `Scripts/build-macos.sh` that automates the full process on a fresh machine:
-```
-1. Check/install Homebrew dependencies
-2. Clone picojson + Google Test if not present
-3. Generate UserSettings.cmake if not present
-4. cmake configure
-5. make -j$(sysctl -n hw.ncpu)
-6. make install
-7. Run unit tests
-8. Report success/failure
-```
+Created `Scripts/build-macos.sh` that automates the full process:
+- Installs Homebrew packages (cmake, pkg-config, wxwidgets@3.2, sfml@2)
+- Clones picojson and Google Test if not present (as sibling repos)
+- Creates UserSettings.cmake from the macOS example if not present
+- Configures, builds, installs, and runs unit tests
+- Supports `--deps-only` (just install deps) and `--no-deps` (skip dep install) flags
 
 #### 8c. Test on a fresh environment
 
-Validate the script works from scratch (clean checkout, no prior build artifacts). Ideally test in a fresh macOS VM or GitHub Actions runner.
+Not yet validated on a completely fresh machine. Ideally test in a fresh macOS VM or GitHub Actions runner.
 
 ### Phase 9: macOS .app Bundle (Optional / Future)
 
@@ -358,5 +343,5 @@ We'll tackle this one phase at a time:
 5. ~~Phase 5 — smoke test~~ ✅ app launches and renders on Apple Silicon
 6. ~~Phase 6 — review source changes for upstream~~ ✅ all changes safe to upstream
 7. ~~Phase 7 — fix runtime issues~~ ✅ post-build symlinks for dev, `make install` for production, locale is cosmetic
-8. Phase 8 — document and automate build steps
+8. ~~Phase 8 — document and automate build steps~~ ✅ BUILD-macOS.md + Scripts/build-macos.sh
 9. Phase 9 — .app bundle (if we get to it)
