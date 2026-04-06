@@ -150,6 +150,17 @@ if (WIN32)
 		DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/RelWithDebInfo")
 endif (WIN32)
 
+# Single-config generators (Makefiles) place the executable directly in
+# CMAKE_CURRENT_BINARY_DIR with no config subdirectory. Create symlinks
+# so the app can find Data/ and Ships/ at runtime during development.
+if (NOT CMAKE_CONFIGURATION_TYPES AND UNIX)
+	add_custom_command(TARGET FloatingSandbox POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/Data" "${CMAKE_CURRENT_BINARY_DIR}/Data"
+		COMMAND ${CMAKE_COMMAND} -E create_symlink "${CMAKE_SOURCE_DIR}/Ships" "${CMAKE_CURRENT_BINARY_DIR}/Ships"
+		COMMENT "Creating symlinks to Data/ and Ships/ for development"
+	)
+endif()
+
 
 ####################################################
 # Install

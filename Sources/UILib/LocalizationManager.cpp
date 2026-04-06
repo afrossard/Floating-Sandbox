@@ -7,6 +7,8 @@
 
 #include <Core/Log.h>
 
+#include <wx/log.h>
+
 #include <algorithm>
 #include <filesystem>
 
@@ -70,9 +72,16 @@ std::unique_ptr<LocalizationManager> LocalizationManager::CreateInstance(
         }
     }
 
-    // Create wxWidgets locale for this language
+    // Create wxWidgets locale for this language.
+    // Suppress wxWidgets' own warning during Init() — on macOS, the system locale
+    // (e.g. en_CH) may not be installed, causing a noisy but harmless warning from
+    // setlocale(). We handle the failure ourselves below.
     auto locale = std::make_unique<wxLocale>();
-    auto res = locale->Init(localeLanguage);
+    bool res;
+    {
+        wxLogNull suppressLocaleWarning;
+        res = locale->Init(localeLanguage);
+    }
     if (!res)
     {
         LogMessage("WARNING: failed locale initialization with language ", localeLanguage);

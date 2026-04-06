@@ -271,53 +271,37 @@ Reviewed all code changes on the `macos-apple-silicon-build` branch vs `master` 
 2. **Standards-conforming** (`template` keyword) — accepted by all compilers, required by the standard
 3. **Bug fixes in dead code** (NEON tests) — only compiled on ARM, were already broken
 
-### Phase 7: Fix Runtime Issues ⬅️ next
+### Phase 7: Fix Runtime Issues ✅
 
 Three runtime issues observed during Phase 5 validation:
 
-#### 7a. Data/Ships directory not found next to executable
+#### 7a. Data/Ships directory not found next to executable ✅
 
 **Problem**: The app resolves its resource root from `argv[0]`'s parent directory (`GameAssetManager.cpp:24`). It expects `Data/` and `Ships/` next to the executable. The CMake `file(COPY ...)` rules (lines 136-141 of `Sources/FloatingSandbox/CMakeLists.txt`) copy into `Debug/`, `Release/`, `RelWithDebInfo/` subdirs — this is for multi-config generators (MSVC, Xcode) but does nothing for single-config Makefiles where the executable lands directly in the build output dir.
 
-**Current workaround**: Manual symlinks (`ln -s ../../Data .` and `ln -s ../../Ships .` in the executable's directory).
+**Fix applied**: Added a CMake `add_custom_command(POST_BUILD)` in `Sources/FloatingSandbox/CMakeLists.txt` that creates symlinks to `Data/` and `Ships/` next to the executable on single-config Unix generators (Makefiles). This runs automatically after every build. The condition `NOT CMAKE_CONFIGURATION_TYPES AND UNIX` ensures it only fires for Makefiles on Unix, not for multi-config generators (MSVC, Xcode) which already have the `file(COPY)` rules above.
 
-**Proper fix options**:
-1. Add a `file(COPY ...)` rule for the Makefile generator case (no config subdirectory)
-2. Add a CMake post-build command to create symlinks on Unix
-3. Use `make install` to a staging directory (already works — the install rules handle Data/Ships correctly, including the default ship rename)
+**For production use**: `make install` copies everything properly (see 7c below).
 
-**Recommendation**: Option 3 (`make install`) is the intended workflow and already works. For development convenience, option 2 (post-build symlinks) avoids the full install step. Investigate which approach works best.
+#### 7b. Locale warning: "Cannot set locale to language 'English (Switzerland)'" ✅
 
-#### 7b. Locale warning: "Cannot set locale to language 'English (Switzerland)'"
+**Problem**: wxWidgets prints a warning on every launch when the system locale (e.g. `en_CH`) isn't installed. On macOS, unlike Linux, not all locale data is present by default.
 
-**Problem**: wxWidgets tries to set the system locale (`en_CH`) but the locale isn't installed. This is a non-fatal warning — the app runs fine — but it's noisy.
+**Root cause**: `wxLocale::Init()` (called from `LocalizationManager.cpp:75`) internally calls `setlocale()` and logs a warning via wxWidgets' log system when it fails.
 
-**Root cause**: wxWidgets' `wxLocale::Init()` calls `setlocale()` with the system's preferred language. On macOS, the system language may map to a locale that isn't in `/usr/share/locale/`. Unlike Linux, macOS doesn't install all locale data by default.
+**Fix applied**: Wrapped the `locale->Init()` call in a `wxLogNull` scope in `LocalizationManager.cpp` to suppress wxWidgets' internal warning. The return value is still checked and logged via the app's own logging system (`LogMessage`). Added `#include <wx/log.h>` to the .cpp file.
 
-**Fix options**:
-1. Suppress the warning (cosmetic fix only)
-2. Set a fallback locale in the app when the preferred one isn't available
-3. Document it as a known cosmetic issue (non-blocking)
+#### 7c. Default ship is not the Titanic ✅ (via `make install`)
 
-**Recommendation**: Investigate whether this is coming from wxWidgets initialization or from the app's `LocalizationManager`. If it's wxWidgets, option 3 is appropriate — it's a platform quirk, not a bug.
+**Problem**: When running from the build directory with symlinked `Ships/`, the app loads `Ships/default_ship.png` (a simple test ship) instead of the Titanic.
 
-#### 7c. Default ship is not the Titanic
+**Root cause**: The install rules rename `R.M.S. Titanic (With Power).shp2` → `Ships/default_ship.shp2` (which takes priority over `.png`), but the symlink points to the source `Ships/` directory which only has the original `default_ship.png`.
 
-**Problem**: When running from the build directory with symlinked `Ships/`, the app loads `Ships/default_ship.png` (a simple test ship). On an installed build (Linux, Windows), the install rules rename `R.M.S. Titanic (With Power).shp2` to `Ships/default_ship.shp2`, which takes priority (the code checks `.shp2` first, then falls back to `.png`).
-
-**Root cause**: The symlink points to the source `Ships/` directory, which has the original `default_ship.png` but not the renamed Titanic `.shp2`.
-
-**Fix**: This is the same issue as 7a — using `make install` resolves it, since the install rules already handle the rename:
-```cmake
-install(DIRECTORY "${CMAKE_SOURCE_DIR}/Ships"
-    DESTINATION .
-    PATTERN "default_ship.png" EXCLUDE)
-install(FILES "${CMAKE_SOURCE_DIR}/Ships/R.M.S. Titanic (With Power).shp2"
-    DESTINATION Ships
-    RENAME "default_ship.shp2")
+**Verdict**: This is by design — the same behavior exists on Windows/Linux where the `file(COPY)` rules also copy the raw source `Ships/` directory without the rename. The Titanic as default ship is an **install-time** feature. Running `make install` produces the correct behavior:
+```bash
+make install    # Copies to build/Install/ with Titanic as default_ship.shp2
+./build/Install/FloatingSandbox   # Launches with Titanic
 ```
-
-**Recommendation**: Solve 7a and 7c together. Either `make install` to a staging directory, or add a post-build step that creates the correct `default_ship.shp2` alongside the symlinked/copied resources.
 
 ### Phase 8: Document Build Steps and Automate ⬅️ after Phase 7
 
@@ -373,6 +357,6 @@ We'll tackle this one phase at a time:
 4. ~~Phase 4 — build, fix, repeat~~ ✅ all targets compile, all 1002 tests pass
 5. ~~Phase 5 — smoke test~~ ✅ app launches and renders on Apple Silicon
 6. ~~Phase 6 — review source changes for upstream~~ ✅ all changes safe to upstream
-7. Phase 7 — fix runtime issues (Data dir, locale, default ship)
+7. ~~Phase 7 — fix runtime issues~~ ✅ post-build symlinks for dev, `make install` for production, locale is cosmetic
 8. Phase 8 — document and automate build steps
 9. Phase 9 — .app bundle (if we get to it)
