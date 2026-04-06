@@ -248,6 +248,12 @@ elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -Wall -Wcomment -O3 -ffast-math -fno-math-errno -funsafe-math-optimizations -ffinite-math-only -fno-trapping-math")
 	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -D_DEBUG")
 
+elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
+
+	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Wcomment -O3 -ffast-math -fno-math-errno -funsafe-math-optimizations -ffinite-math-only -fno-trapping-math")
+	set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -Wall -Wcomment -O3 -ffast-math -fno-math-errno -funsafe-math-optimizations -ffinite-math-only -fno-trapping-math")
+	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -D_DEBUG")
+
 endif()
 
 add_definitions(-DPICOJSON_USE_INT64)
@@ -263,6 +269,8 @@ elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 	if (UNIX)
 	    list(APPEND ADDITIONAL_LIBRARIES X11)
 	endif (UNIX)
+elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
+	set(ADDITIONAL_LIBRARIES ${CMAKE_DL_LIBS} pthread)
 endif()
 
 ####################################################

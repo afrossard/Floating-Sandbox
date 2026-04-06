@@ -329,7 +329,8 @@ TEST(AlgorithmsTests, DiffuseLight_NeonVectorized_4Lamps)
     aligned_to_vword vec2f pointPositions[] = { { 1.0f, 2.0f}, {2.0f, 4.0f}, {10.0f, 5.0f}, {3.0f, 4.0f} };
     aligned_to_vword PlaneId pointPlaneIds[] = { 1, 1, 2, 3 };
 
-    aligned_to_vword vec2f lampPositions[] = { { 4.0f, 2.0f}, {1.0f, 2.0f}, {100.0f, 100.0f}, {200.0f, 200.0f} };
+    aligned_to_vword float lampPositionsX[] = { 4.0f, 1.0f, 100.0f, 200.0f };
+    aligned_to_vword float lampPositionsY[] = { 2.0f, 2.0f, 100.0f, 200.0f };
     aligned_to_vword PlaneId lampPlaneIds[] = { 3, 2, 10, 10 };
     aligned_to_vword float lampDistanceCoeffs[] = { 0.1f, 0.2f, 10.0f, 20.0f };
     aligned_to_vword float lampSpreadMaxDistances[] = { 4.0f, 6.0f, 1.0f, 2.0f };
@@ -341,7 +342,8 @@ TEST(AlgorithmsTests, DiffuseLight_NeonVectorized_4Lamps)
         4,
         pointPositions,
         pointPlaneIds,
-        lampPositions,
+        lampPositionsX,
+        lampPositionsY,
         lampPlaneIds,
         lampDistanceCoeffs,
         lampSpreadMaxDistances,
@@ -352,25 +354,29 @@ TEST(AlgorithmsTests, DiffuseLight_NeonVectorized_4Lamps)
     //  - Lamp1: D=3 NewLight=0.1*(4-3) = 0.1
     //  - Lamp2: D=0 NewLight=0.2*(6-0) = 1.2 // Truncated
 
-    EXPECT_FLOAT_EQ(1.0f, outLightBuffer[0]);
+    // NEON uses approximate reciprocal square root (vrsqrteq_f32), so results
+    // differ slightly from scalar math; use EXPECT_NEAR with tolerance
+    float constexpr NeonTolerance = 0.001f;
+
+    EXPECT_NEAR(1.0f, outLightBuffer[0], NeonTolerance);
 
     // Point2:
     //  - Lamp1: D=sqrt(8) NewLight=0.1*(4-sqrt(8)) = 0.1171573
     //  - Lamp2: D=sqrt(5) NewLight=0.2*(6-sqrt(5)) = 0.7527864
 
-    EXPECT_FLOAT_EQ(0.7527864f, outLightBuffer[1]);
+    EXPECT_NEAR(0.7527864f, outLightBuffer[1], NeonTolerance);
 
     // Point3:
     //  - Lamp1: D=sqrt(45) NewLight=0.1*(4-sqrt(45)) = 0.0
     //  - Lamp2: D=sqrt(90) NewLight=0.2*(6-sqrt(90)) = 0.0
 
-    EXPECT_FLOAT_EQ(0.0f, outLightBuffer[2]);
+    EXPECT_NEAR(0.0f, outLightBuffer[2], NeonTolerance);
 
     // Point4:
     //  - Lamp1: D=sqrt(5) NewLight=0.1*(4-sqrt(5)) = 0.17639320225
     //  - Lamp2: D=sqrt(8) NewLight=0.2*(6-sqrt(8)) = 0.63431457505 // Excluded by planeID
 
-    EXPECT_FLOAT_EQ(0.17639320225f, outLightBuffer[3]);
+    EXPECT_NEAR(0.17639320225f, outLightBuffer[3], NeonTolerance);
 }
 
 TEST(AlgorithmsTests, DiffuseLight_NeonVectorized_8Lamps)
@@ -378,7 +384,8 @@ TEST(AlgorithmsTests, DiffuseLight_NeonVectorized_8Lamps)
     aligned_to_vword vec2f pointPositions[] = { { 1.0f, 2.0f}, {2.0f, 4.0f}, {10.0f, 5.0f}, {3.0f, 4.0f} };
     aligned_to_vword PlaneId pointPlaneIds[] = { 1, 1, 2, 3 };
 
-    aligned_to_vword vec2f lampPositions[] = { {100.0f, 100.0f}, {200.0f, 200.0f}, {100.0f, 100.0f}, {200.0f, 200.0f}, { 4.0f, 2.0f}, {1.0f, 2.0f}, {100.0f, 100.0f}, {200.0f, 200.0f} };
+    aligned_to_vword float lampPositionsX[] = { 100.0f, 200.0f, 100.0f, 200.0f, 4.0f, 1.0f, 100.0f, 200.0f };
+    aligned_to_vword float lampPositionsY[] = { 100.0f, 200.0f, 100.0f, 200.0f, 2.0f, 2.0f, 100.0f, 200.0f };
     aligned_to_vword PlaneId lampPlaneIds[] = { 1, 1, 1, 1, 3, 2, 10, 10 };
     aligned_to_vword float lampDistanceCoeffs[] = { 10.0f, 20.0f, 10.0f, 20.0f, 0.1f, 0.2f, 10.0f, 20.0f };
     aligned_to_vword float lampSpreadMaxDistances[] = { 4.0f, 6.0f, 1.0f, 2.0f, 4.0f, 6.0f, 1.0f, 2.0f };
@@ -390,7 +397,8 @@ TEST(AlgorithmsTests, DiffuseLight_NeonVectorized_8Lamps)
         4,
         pointPositions,
         pointPlaneIds,
-        lampPositions,
+        lampPositionsX,
+        lampPositionsY,
         lampPlaneIds,
         lampDistanceCoeffs,
         lampSpreadMaxDistances,
@@ -401,25 +409,29 @@ TEST(AlgorithmsTests, DiffuseLight_NeonVectorized_8Lamps)
     //  - Lamp5: D=3 NewLight=0.1*(4-3) = 0.1
     //  - Lamp6: D=0 NewLight=0.2*(6-0) = 1.2 // Truncated
 
-    EXPECT_FLOAT_EQ(1.0f, outLightBuffer[0]);
+    // NEON uses approximate reciprocal square root (vrsqrteq_f32), so results
+    // differ slightly from scalar math; use EXPECT_NEAR with tolerance
+    float constexpr NeonTolerance = 0.001f;
+
+    EXPECT_NEAR(1.0f, outLightBuffer[0], NeonTolerance);
 
     // Point2:
     //  - Lamp5: D=sqrt(8) NewLight=0.1*(4-sqrt(8)) = 0.1171573
     //  - Lamp6: D=sqrt(5) NewLight=0.2*(6-sqrt(5)) = 0.7527864
 
-    EXPECT_FLOAT_EQ(0.7527864f, outLightBuffer[1]);
+    EXPECT_NEAR(0.7527864f, outLightBuffer[1], NeonTolerance);
 
     // Point3:
     //  - Lamp5: D=sqrt(45) NewLight=0.1*(4-sqrt(45)) = 0.0
     //  - Lamp6: D=sqrt(90) NewLight=0.2*(6-sqrt(90)) = 0.0
 
-    EXPECT_FLOAT_EQ(0.0f, outLightBuffer[2]);
+    EXPECT_NEAR(0.0f, outLightBuffer[2], NeonTolerance);
 
     // Point4:
     //  - Lamp5: D=sqrt(5) NewLight=0.1*(4-sqrt(5)) = 0.17639320225
     //  - Lamp6: D=sqrt(8) NewLight=0.2*(6-sqrt(8)) = 0.63431457505 // Excluded by planeID
 
-    EXPECT_FLOAT_EQ(0.17639320225f, outLightBuffer[3]);
+    EXPECT_NEAR(0.17639320225f, outLightBuffer[3], NeonTolerance);
 }
 #endif
 
@@ -523,10 +535,17 @@ void RunSmoothBufferAndAddTest(Algorithm algorithm)
 #endif
 }
 
+#if !FS_IS_ARM_NEON()
 TEST(AlgorithmsTests, SmoothBufferAndAdd_12_5_Naive)
 {
     RunSmoothBufferAndAddTest(Algorithms::SmoothBufferAndAdd_Naive<12, 5>);
 }
+#else
+TEST(AlgorithmsTests, SmoothBufferAndAdd_16_5_Naive)
+{
+    RunSmoothBufferAndAddTest(Algorithms::SmoothBufferAndAdd_Naive<16, 5>);
+}
+#endif
 
 #if FS_IS_ARCHITECTURE_X86_32() || FS_IS_ARCHITECTURE_X86_64()
 TEST(AlgorithmsTests, SmoothBufferAndAdd_12_5_SSEVectorized)
@@ -538,7 +557,7 @@ TEST(AlgorithmsTests, SmoothBufferAndAdd_12_5_SSEVectorized)
 #if FS_IS_ARM_NEON()
 TEST(AlgorithmsTests, SmoothBufferAndAdd_16_5_NeonVectorized)
 {
-    RunSmoothBufferAndAddTest_16_5(Algorithms::SmoothBufferAndAdd_NeonVectorized<16, 5>);
+    RunSmoothBufferAndAddTest(Algorithms::SmoothBufferAndAdd_NeonVectorized<16, 5>);
 }
 #endif
 

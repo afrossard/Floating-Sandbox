@@ -38,7 +38,7 @@ target_link_libraries (OpenGLCore
 	${OPENGL_LIBRARIES}
 	${ADDITIONAL_LIBRARIES})
 
-if (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
+if (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "AppleClang")
 
 	target_link_libraries (OpenGLCore
 		${CMAKE_DL_LIBS})
