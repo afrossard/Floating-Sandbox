@@ -38,22 +38,75 @@ Decision criteria:
 
 This decision shapes Phase 2 (UserSettings), Phase 3 (dependency installation), and potentially CI setup later.
 
-#### Decision: vcpkg with a recent baseline and dependency upgrades
+#### Initial decision: vcpkg (later rolled back — see below)
 
-**Why vcpkg over Conan**: Simpler CMake integration (just a toolchain file vs. a separate `conan install` step), no Python dependency, and better CI ergonomics out of the box. Conan's main advantage — fine-grained per-package version pinning — is unnecessary given the dependency upgrade decision below.
+We initially chose vcpkg for its per-project isolation and reproducible version pinning:
+
+**Why vcpkg over Conan**: Simpler CMake integration (just a toolchain file vs. a separate `conan install` step), no Python dependency, and better CI ergonomics out of the box.
 
 **Why vcpkg over Homebrew**: Homebrew installs globally, is not reproducible across machines, and has no lockfile. Doesn't meet the "clean host" goal.
 
 **Why vcpkg over Nix**: Nix is the most isolated option but has a steep learning curve, rough macOS support, and is uncommon in the C++ ecosystem. Overkill for this project.
 
-**Why upgrade dependencies to current versions**: A compatibility review confirmed that upgrading from wxWidgets 3.1.4 to 3.2.x is safe — no breaking API changes, and the project already handles HiDPI correctly. This eliminates the need for version pinning and lets us use a recent vcpkg baseline where all packages are current and tested together on ARM64/macOS. The same applies to SFML (2.5.1 → current).
+We validated vcpkg end-to-end: created a `vcpkg.json` manifest, bootstrapped vcpkg, and confirmed all 23 packages (including transitive deps) build successfully on arm64-osx in ~4 minutes.
 
-**vcpkg approach**:
-- Use **manifest mode** with a `vcpkg.json` at the repo root
-- Set `builtin-baseline` to a recent vcpkg commit (acts as a reproducible snapshot of all package versions)
-- No version overrides needed — current versions of all deps are acceptable
-- To upgrade later: bump the baseline hash forward, test, commit
-- Dependencies install into `vcpkg_installed/` (gitignored), keeping the host clean
+#### Problem: vcpkg forces dependency version upgrades
+
+vcpkg's current packages are wxWidgets 3.3.x and SFML 3.x. These newer versions use **different CMake target names**:
+
+```cmake
+# Old (what the existing build uses):
+${wxWidgets_LIBRARIES}           # variable-based linking
+sfml-audio sfml-system           # plain library names
+
+# New (vcpkg 3.3.x / 3.x):
+wx::core wx::base wx::gl         # CMake imported targets
+SFML::Audio SFML::System         # CMake imported targets
+```
+
+This means adopting vcpkg requires rewriting `find_package` calls and `target_link_libraries` across 6+ CMakeLists.txt files — not just for macOS, but in a way that either breaks the existing Windows/Linux builds or requires conditional paths for both old and new styles.
+
+#### Key insight: the AppImage build didn't change the build system
+
+The Linux AppImage build (in `floating-sandbox-appimage`) uses a Containerfile that installs deps via apt-get + builds wxWidgets 3.1.4 from source, then runs the existing CMake build **completely unchanged**. No new package manager, no `find_package` rewrites. This is the simplest and most proven approach.
+
+#### Why not a macOS container/VM?
+
+We considered using a macOS VM for isolation (similar to the Linux container approach):
+
+| | **Pros** | **Cons** |
+|---|---|---|
+| Isolation | Fully clean, snapshot/restore | Heavy — 30-50GB disk per VM |
+| Reproducibility | Pin macOS version + deps | Manual setup (no Dockerfile equivalent for macOS) |
+| CI portability | None — GitHub Actions already provides clean macOS runners | Adds complexity without CI benefit |
+| Tooling | Tart (CLI-friendly), UTM, Apple Virtualization.framework | No standard container format like Docker |
+
+**Verdict**: Overkill for this project. GitHub Actions already gives a clean macOS VM per CI run. For local dev, Homebrew deps are easy to install and uninstall.
+
+#### Why version pinning is a separate concern
+
+vcpkg's main advantage — reproducible version pinning via `builtin-baseline` — solves a real problem, but it's a **cross-platform project concern**, not specific to the macOS build. The Linux build has the same issue (apt versions can drift). Solving this only for macOS while Linux uses apt and Windows uses manually downloaded libs would be inconsistent. This should be addressed as a separate project for all platforms.
+
+#### Revised decision: Homebrew + compatible versions (no build system changes)
+
+Homebrew provides version-pinned formulas that are compatible with the existing build system:
+
+| Dependency | Homebrew formula | Version | Compatible with existing CMakeLists? |
+|---|---|---|---|
+| wxWidgets | `wxwidgets@3.2` | 3.2.10 | Yes — API compatible with 3.1.4 (verified) |
+| SFML | `sfml@2` | 2.6.2 | Yes — backward compatible with 2.5.x |
+| picojson | `picojson` | 1.3.0 | Yes |
+| zlib, libpng, jpeg | system / brew | current | Yes |
+| Google Test | build from source | any | Yes — already `add_subdirectory()` |
+
+Both `wxwidgets@3.2` and `sfml@2` are keg-only (installed under `/opt/homebrew/opt/`, not linked globally), so they require explicit paths in `UserSettings.cmake` or `CMAKE_PREFIX_PATH` — but this is the same pattern already used on Windows and Linux.
+
+**This approach**:
+- Requires **zero changes** to `find_package` calls or `target_link_libraries`
+- The only CMake change needed is adding **AppleClang compiler flags** (Phase 2)
+- Follows the same pattern as the AppImage build: OS package manager + minimal CMake additions
+- Easy to set up and easy to uninstall (`brew uninstall`)
+- Works on GitHub Actions macOS runners (`brew install` in CI)
 
 ### Phase 2: CMake AppleClang Support ⬅️ (next)
 
@@ -64,21 +117,62 @@ Add an `elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")` block in the r
 - Debug flags (`-D_DEBUG`)
 - Additional libraries for APPLE (handle `pthread`, `iconv`, framework linking)
 
-Also verify that any `"GNU"` compiler ID checks in sub-project CMakeLists.txt files don't exclude AppleClang where they should include it.
+Also verify that any `"GNU"` compiler ID checks in sub-project CMakeLists.txt files don't exclude AppleClang where they should include it. Known location:
+- `Sources/OpenGLCore/CMakeLists.txt:41` — links `${CMAKE_DL_LIBS}` only for GNU, should also apply to AppleClang
 
-Additionally, the `find_package` calls need updating for vcpkg's newer dependency versions:
-- **wxWidgets 3.3.x**: vcpkg provides CMake config mode — use `find_package(wxWidgets CONFIG REQUIRED)` and link via `wx::core wx::base wx::gl wx::html wx::propgrid wx::ribbon` targets
-- **SFML 3.x**: use `find_package(SFML COMPONENTS Audio System CONFIG REQUIRED)` and link via `SFML::Audio SFML::System` targets
-- **picojson**: header-only in vcpkg — use `find_path(PICOJSON_INCLUDE_DIRS "picojson/picojson.h")` instead of `find_package(PicoJSON)`
+No `find_package` changes needed — Homebrew's `wxwidgets@3.2` and `sfml@2` are compatible with the existing CMake find modules.
 
-### Phase 3: vcpkg Setup & Dependency Installation ✅
+### Phase 3: Homebrew Dependency Installation
 
-#### Prerequisites (via Homebrew)
-
-These are the only tools installed globally on the host:
+#### Install dependencies
 
 ```bash
-brew install cmake pkg-config
+brew install cmake pkg-config wxwidgets@3.2 sfml@2 picojson
+```
+
+zlib, libpng, and libjpeg are provided by macOS / Xcode Command Line Tools.
+
+Google Test is built from source via `add_subdirectory()` — clone it alongside the project:
+
+```bash
+git clone --branch v1.10.x --depth 1 https://github.com/google/googletest.git <path-of-your-choice>
+```
+
+Note: `wxwidgets@3.2` and `sfml@2` are keg-only — they install under `/opt/homebrew/opt/` and are not linked into `/opt/homebrew/lib`. The `UserSettings.cmake` file must point CMake to their locations explicitly (see below).
+
+#### Create `UserSettings.cmake`
+
+Copy from the example:
+
+```bash
+cp UserSettings.example-macos.cmake UserSettings.cmake
+```
+
+Edit paths as needed. The example will contain:
+
+```cmake
+set(FS_USE_STATIC_LIBS ON)
+
+# Homebrew keg-only deps (Apple Silicon default prefix)
+set(CMAKE_PREFIX_PATH "/opt/homebrew/opt/wxwidgets@3.2;/opt/homebrew/opt/sfml@2")
+
+# Google Test (adjust to your clone location)
+set(GTEST_DIR "<path-to-googletest>")
+
+# PicoJSON
+set(PICOJSON_DIR "/opt/homebrew/opt/picojson/include")
+
+# Define macro that creates post-install actions
+macro(DefineUserPostInstall)
+endmacro()
+```
+
+#### Configure and build
+
+```bash
+mkdir build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release -DFS_BUILD_BENCHMARKS=OFF ..
+make -j$(sysctl -n hw.ncpu)
 ```
 
 #### Uninstall
@@ -86,79 +180,15 @@ brew install cmake pkg-config
 To fully remove the build environment from your machine:
 
 ```bash
-# Remove Homebrew prerequisites
-brew uninstall cmake pkg-config
+# Remove Homebrew packages
+brew uninstall cmake pkg-config wxwidgets@3.2 sfml@2 picojson
 
-# Remove vcpkg and all its cached builds
-rm -rf <path-to-vcpkg>
-
-# Remove vcpkg binary cache
-rm -rf ~/.cache/vcpkg
-
-# Remove VCPKG_ROOT from your shell profile (~/.zshrc or similar)
+# Remove the Google Test clone
+rm -rf <path-to-googletest>
 
 # Remove the build directory from the project
 rm -rf build/
-rm -rf vcpkg_installed/
 ```
-
-#### One-time machine setup
-
-Clone vcpkg and bootstrap it. The clone location is up to you:
-
-```bash
-git clone https://github.com/microsoft/vcpkg.git <path-of-your-choice>
-<path-of-your-choice>/bootstrap-vcpkg.sh -disableMetrics
-```
-
-Then set `VCPKG_ROOT` in your shell profile (e.g. `~/.zshrc`) so the build can find it:
-
-```bash
-export VCPKG_ROOT=<path-of-your-choice>
-```
-
-#### Project setup
-
-**1. Create `vcpkg.json`** at the repo root — this is the manifest that declares all dependencies:
-
-See `vcpkg.json` in the repo root for the actual manifest. Key findings from validation:
-
-- wxWidgets 3.3.x on vcpkg includes `gl`, `html`, `propgrid`, `ribbon` by default — no need to list them as features (and `core` cannot be listed explicitly)
-- SFML feature `audio` is sufficient — `system` is pulled in automatically
-- All 23 packages (including transitive deps) resolve and build successfully on arm64-osx in ~4 minutes
-
-**2. Configure CMake** with the vcpkg toolchain file:
-
-```bash
-cmake -B build \
-  -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DFS_BUILD_BENCHMARKS=OFF \
-  -DFS_USE_STATIC_LIBS=ON \
-  -DFS_INSTALL_DIRECTORY=~/floating-sandbox \
-  ..
-```
-
-The toolchain file hooks into `find_package` automatically — no changes to `CMakeLists.txt` needed for dependency resolution. Dependencies are downloaded and built on first configure, then cached in `vcpkg_installed/`.
-
-**3. Create `UserSettings.example-macos.cmake`** — with vcpkg handling most deps, this becomes minimal:
-
-```cmake
-set(FS_USE_STATIC_LIBS ON)
-# Most dependencies are handled by vcpkg toolchain file.
-# Only set paths for dependencies not in vcpkg (if any).
-```
-
-**4. Add to `.gitignore`**:
-- `vcpkg_installed/` (built dependencies, per-project)
-
-#### How it works day-to-day
-
-- `vcpkg.json` is committed to the repo — all developers get the same dependency list
-- `builtin-baseline` pins the exact versions — reproducible across machines
-- Dependencies build locally on first `cmake` configure (~10-15 min), then are cached
-- No global pollution — everything lives in `vcpkg_installed/` under the build tree
-- To upgrade: bump the `builtin-baseline` hash to a newer vcpkg commit, re-configure
 
 ### Phase 4: Compile and Fix Build Errors
 
@@ -190,9 +220,9 @@ Package as a proper macOS `.app` bundle:
 ## Iteration Strategy
 
 We'll tackle this one phase at a time:
-1. ~~Phase 1 — decide on dev environment approach~~ ✅ decided on vcpkg
-2. ~~Phase 3 — vcpkg setup + dependency installation~~ ✅ all 23 packages build on arm64-osx
-3. Phase 2 — CMake AppleClang support + adapt find_package calls for new dep versions ⬅️ next
+1. ~~Phase 1 — decide on dev environment approach~~ ✅ initially chose vcpkg, rolled back to Homebrew (see decision trail above)
+2. Phase 2 — CMake AppleClang compiler flags ⬅️ next
+3. Phase 3 — Homebrew dependency installation + UserSettings.cmake
 4. Phase 4 iteratively — build, fix, repeat
 5. Phase 5 — smoke test
 6. Phase 6 if we get a working build
