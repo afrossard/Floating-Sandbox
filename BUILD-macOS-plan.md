@@ -243,44 +243,35 @@ Two issues, both caused by the NEON `DiffuseLight` implementation being refactor
 - ✅ App launches, renders the simulation, and displays a ship
 - Known issues to fix in Phase 7 (see below)
 
-### Phase 6: Review Source Changes for Upstream ⬅️ next
+### Phase 6: Review Source Changes for Upstream ✅
 
-Review all code changes made during the port and assess their impact on the original project (Windows/Linux builds). The goal is to determine which changes are safe to upstream and which need conditional compilation.
+Reviewed all code changes on the `macos-apple-silicon-build` branch vs `master` (`git diff master..HEAD`). Goal: determine which changes are safe to upstream and which need conditional compilation.
 
-#### Changes made
+#### Files changed vs master (excluding docs)
 
-**A. CMakeLists.txt (root) — new `AppleClang` blocks**
-- Added `elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")` for compiler flags and libraries
-- **Upstream impact**: None — these are new `elseif` branches that only activate on AppleClang. Existing MSVC and GNU paths are untouched.
-- **Recommendation**: Safe to upstream as-is.
+| File | Change | Upstream risk |
+|---|---|---|
+| **CMakeLists.txt** (root) | Merged GNU+AppleClang compiler flags with `OR`; added separate AppleClang libraries block | **None** — the `OR` doesn't change GNU behavior; the new `elseif` only triggers on AppleClang |
+| **Sources/OpenGLCore/CMakeLists.txt** | `if (GNU)` → `if (GNU OR AppleClang)` for `dl_libs` linking | **None** — additive condition, only triggers on AppleClang |
+| **Sources/ShipBuilderLib/Tools/TextureEraserTool.cpp** | Added `template` keyword before `CloneExistingLayer<TLayerType>()` (2 sites) | **Positive** — C++ standard conformance. GCC/MSVC already accept it |
+| **Sources/ShipBuilderLib/Tools/TextureMagicWandTool.cpp** | Added `template` keyword before `CloneExistingLayer<TLayerType>()` (1 site) | **Positive** — same as above |
+| **Sources/UnitTests/AlgorithmsTests.cpp** | Fixed NEON test signatures, added `EXPECT_NEAR` tolerance, guarded Naive test buffer size | **None** — all changes inside `#if FS_IS_ARM_NEON()` (lines 326-436) or `#if !FS_IS_ARM_NEON()` guards. x86 builds compile out these blocks entirely |
+| **UserSettings.example-macos.cmake** *(new)* | macOS build config template, parallel to existing Windows/Linux examples | **None** — new file only |
 
-**B. Sources/OpenGLCore/CMakeLists.txt — added AppleClang to dl_libs condition**
-- Changed `if (GNU)` to `if (GNU OR AppleClang)` for linking `${CMAKE_DL_LIBS}`
-- **Upstream impact**: None — adds a condition that only triggers on AppleClang.
-- **Recommendation**: Safe to upstream as-is.
+#### Verified
 
-**C. Sources/ShipBuilderLib/Tools/TextureEraserTool.cpp, TextureMagicWandTool.cpp — `template` keyword**
-- Added `template` keyword before `CloneExistingLayer<TLayerType>()` (3 call sites)
-- **Upstream impact**: Positive — this is what the C++ standard requires. GCC and MSVC already accept the `template` keyword; they just don't require it. The code becomes more portable.
-- **Recommendation**: Safe to upstream. Improves standards conformance on all platforms.
+- All NEON test changes confirmed inside `#if FS_IS_ARM_NEON()` ... `#endif` guards — x86 builds never see them
+- The `SmoothBufferAndAdd_12_5_Naive` test is now guarded with `#if !FS_IS_ARM_NEON()` so x86 keeps the 12-element version; ARM gets `SmoothBufferAndAdd_16_5_Naive` with the 16-element version
+- The `template` keyword is the **only** change that compiles on all platforms, and it's what the C++ standard requires
 
-**D. Sources/UnitTests/AlgorithmsTests.cpp — NEON test fixes**
-- Fixed `DiffuseLight_NeonVectorized_4Lamps` and `_8Lamps`: split interleaved `vec2f lampPositions[]` into separate `float lampPositionsX[]` / `lampPositionsY[]` arrays to match the current function signature. Added `EXPECT_NEAR` with tolerance for NEON approximate math.
-- Fixed `SmoothBufferAndAdd_16_5_NeonVectorized`: call `RunSmoothBufferAndAddTest()` instead of nonexistent `RunSmoothBufferAndAddTest_16_5()`.
-- Added `#if !FS_IS_ARM_NEON()` / `#else` around the Naive test to use the correct buffer size (16 for NEON, 12 for x86).
-- **Upstream impact**: These tests were already broken on ARM — they never compiled. The fixes are inside `#if FS_IS_ARM_NEON()` blocks, so x86 builds are completely unaffected.
-- **Recommendation**: Safe to upstream. Fixes pre-existing bugs in ARM test code.
+#### Verdict
 
-#### Summary
+**All changes are safe to upstream.** No existing behavior is modified on Windows (MSVC) or Linux (GNU). Changes fall into three categories:
+1. **Additive** (CMake AppleClang branches, new example file) — no effect on existing platforms
+2. **Standards-conforming** (`template` keyword) — accepted by all compilers, required by the standard
+3. **Bug fixes in dead code** (NEON tests) — only compiled on ARM, were already broken
 
-All changes are either:
-1. **Additive** (new AppleClang branches) — no effect on existing platforms
-2. **Standards-conforming** (template keyword) — accepted by all compilers
-3. **Bug fixes in dead code** (NEON tests) — only compiled on ARM, already broken
-
-**No change risks breaking the Windows or Linux build.**
-
-### Phase 7: Fix Runtime Issues ⬅️ next (parallel with Phase 6)
+### Phase 7: Fix Runtime Issues ⬅️ next
 
 Three runtime issues observed during Phase 5 validation:
 
@@ -381,7 +372,7 @@ We'll tackle this one phase at a time:
 3. ~~Phase 3 — Homebrew dependency installation + UserSettings.cmake~~ ✅
 4. ~~Phase 4 — build, fix, repeat~~ ✅ all targets compile, all 1002 tests pass
 5. ~~Phase 5 — smoke test~~ ✅ app launches and renders on Apple Silicon
-6. Phase 6 — review source changes for upstream ⬅️ next
+6. ~~Phase 6 — review source changes for upstream~~ ✅ all changes safe to upstream
 7. Phase 7 — fix runtime issues (Data dir, locale, default ship)
 8. Phase 8 — document and automate build steps
 9. Phase 9 — .app bundle (if we get to it)
