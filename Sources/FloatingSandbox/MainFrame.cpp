@@ -157,6 +157,13 @@ MainFrame::MainFrame(
     Maximize();
     Centre();
 
+#ifdef __WXOSX__
+    // Enable native macOS full screen (menu bar auto-shows on hover,
+    // integrates with Mission Control). Without this, ShowFullScreen()
+    // creates a borderless window that hides the menu bar permanently.
+    EnableFullScreenView(true);
+#endif
+
     Bind(wxEVT_CLOSE_WINDOW, &MainFrame::OnMainFrameClose, this);
 
     // We hook chars to get arrow keys; can't do it with global event filter as that would intercept presses in dialogs,
@@ -2130,7 +2137,11 @@ void MainFrame::OnFullScreenMenuItemSelected(wxCommandEvent & /*event*/)
     mFullScreenMenuItem->Enable(false);
     mNormalScreenMenuItem->Enable(true);
 
+#ifdef __WXOSX__
+    this->ShowFullScreen(true);
+#else
     this->ShowFullScreen(true, wxFULLSCREEN_NOBORDER);
+#endif
 }
 
 void MainFrame::OnMuteMenuItemSelected(wxCommandEvent & /*event*/)

@@ -388,7 +388,11 @@ private:
 
             if (!mUIPreferencesManager || mUIPreferencesManager->GetStartInFullScreen())
             {
+#ifdef __WXOSX__
+                this->ShowFullScreen(true);
+#else
                 this->ShowFullScreen(true, wxFULLSCREEN_NOBORDER);
+#endif
             }
 
 #ifdef __WXGTK__
