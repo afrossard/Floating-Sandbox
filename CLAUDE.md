@@ -76,6 +76,20 @@ FloatingSandbox (executable - wxWidgets app, main frame, tools, audio)
 
 `Data/` contains runtime assets: shaders (`Shaders/`), textures (`Textures/`), fonts (`Fonts/`), sounds (`Sounds/`), music (`Music/`), built-in ships (`Built-in Ships/`), localization (`Languages/`).
 
+## TODO File Convention
+
+`FloatingSandbox TODO.txt` is the author's plan/task tracker. It uses a custom prefix convention:
+
+| Prefix | Meaning |
+|--------|---------|
+| `-` | To do (pending) |
+| `=` | In progress |
+| `+` | Done (completed) |
+| `!` | Note / caveat / open question (static annotation, not part of the task lifecycle) |
+| `X` | Rejected / cancelled (written directly, not transitioned from `-`) |
+
+Indentation (tabs) indicates hierarchy. Items transition `-` → `=` → `+` as work progresses (confirmed in git history). `!` and `X` are non-lifecycle markers — they don't transition to other states. When adding entries, respect this format.
+
 ## Compiler Notes
 
 - C++17 standard required
