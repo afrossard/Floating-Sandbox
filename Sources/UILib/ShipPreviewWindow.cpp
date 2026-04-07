@@ -423,7 +423,12 @@ void ShipPreviewWindow::OnPollQueueTimer(wxTimerEvent & /*event*/)
         {
             case ThreadToPanelMessage::MessageType::DirScanError:
             {
-                throw GameException(message->GetErrorMessage());
+                // On GTK, throwing from a timer handler terminates the app
+                // because wxWidgets does not catch C++ exceptions in the
+                // event loop the way it does on Windows/macOS.
+                // Log the error and continue instead.
+                LogMessage("ShipPreviewPanel::OnPollQueueTimer: DirScanError: ", message->GetErrorMessage());
+                break;
             }
 
             case ThreadToPanelMessage::MessageType::PreviewReady:
@@ -902,6 +907,11 @@ void ShipPreviewWindow::RecalculateGeometry(
 {
     // Store size
     mClientSize = clientSize;
+
+    // On GTK, resize events with zero dimensions can occur during dialog
+    // setup/teardown — skip geometry calculation to avoid division by zero
+    if (clientSize.GetWidth() < InfoTileWidth + HorizontalMarginMin)
+        return;
 
     // Calculate number of columns
     mCols = static_cast<int>(static_cast<float>(clientSize.GetWidth()) / static_cast<float>(InfoTileWidth + HorizontalMarginMin));

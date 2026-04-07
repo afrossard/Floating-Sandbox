@@ -82,6 +82,13 @@ public:
         this->SetSizerAndFit(hSizer);
     }
 
+    ~EditSpinBox()
+    {
+        // Prevent wxEVT_KILL_FOCUS from firing during destruction,
+        // which would call mOnValueChanged after it's been destroyed.
+        mTextCtrl->Unbind(wxEVT_KILL_FOCUS, &EditSpinBox::OnKillFocus, this);
+    }
+
     bool IsModified() const
     {
         return mIsModified;
